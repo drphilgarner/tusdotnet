@@ -67,7 +67,8 @@ namespace tusdotnet.Stores
 		{            
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
             
-            await appendBlob.AppendFromStreamAsync(stream, cancellationToken);
+            //todo sort cancellationToken
+            await appendBlob.AppendFromStreamAsync(stream);
 
             return stream.Length;             			
 		}
@@ -75,7 +76,7 @@ namespace tusdotnet.Stores
 		/// <inheritdoc />
 		public Task<bool> FileExistAsync(string fileId, CancellationToken cancellationToken)
 		{
-            return _cloudBlobContainer.GetAppendBlobReference(fileId).ExistsAsync(cancellationToken);
+            return _cloudBlobContainer.GetAppendBlobReference(fileId).ExistsAsync();
 		}
 
 		/// <inheritdoc />
@@ -84,12 +85,12 @@ namespace tusdotnet.Stores
             var uploadLengthBlobName = fileId + ".uploadlength";
             var uploadLengthBlob = _cloudBlobContainer.GetAppendBlobReference(uploadLengthBlobName);
             
-            if (!uploadLengthBlob.ExistsAsync(cancellationToken).Result)
+            if (!uploadLengthBlob.ExistsAsync().Result)
 			{
 				return Task.FromResult<long?>(null);
 			}
 
-            var firstLine = uploadLengthBlob.DownloadTextAsync(cancellationToken);
+            var firstLine = uploadLengthBlob.DownloadTextAsync();
                        
 
 			return firstLine == null
@@ -101,7 +102,7 @@ namespace tusdotnet.Stores
 		public Task<long> GetUploadOffsetAsync(string fileId, CancellationToken cancellationToken)
 		{
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
-            appendBlob.FetchAttributes();
+            appendBlob.FetchAttributesAsync();
 
             return Task.FromResult(appendBlob.Properties.Length);
         }
@@ -111,14 +112,14 @@ namespace tusdotnet.Stores
         {
             var fileId = Guid.NewGuid().ToString("n");
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
-            appendBlob.CreateOrReplace();
+            await appendBlob.CreateOrReplaceAsync();
             
             if (uploadLength != -1)
             {
                 await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
             }
             var metadataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId+".metadata");
-            metadataBlob.AppendText(metadata);            
+            await metadataBlob.AppendTextAsync(metadata);            
             return fileId;
         }
 
@@ -127,11 +128,11 @@ namespace tusdotnet.Stores
         {
             var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId+".metadata");
             
-            if (!metaDataBlob.Exists())
+            if (!metaDataBlob.ExistsAsync().Result)
             {
                 return Task.FromResult<string>(null);
             }
-            return metaDataBlob.DownloadTextAsync(cancellationToken);            
+            return metaDataBlob.DownloadTextAsync();            
         }
 
         /// <inheritdoc />
@@ -158,10 +159,10 @@ namespace tusdotnet.Stores
                 var expirationBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".expiration");
 
 
-                appendBlob.DeleteIfExistsAsync(cancellationToken);
-                metadataBlob.DeleteIfExistsAsync(cancellationToken);
-                uploadlengthBlob.DeleteIfExistsAsync(cancellationToken);
-                expirationBlob.DeleteIfExistsAsync(cancellationToken);               
+                appendBlob.DeleteIfExistsAsync();
+                metadataBlob.DeleteIfExistsAsync();
+                uploadlengthBlob.DeleteIfExistsAsync();
+                expirationBlob.DeleteIfExistsAsync();               
                 
 				//File.Delete($"{path}.uploadconcat");
 				
@@ -172,7 +173,7 @@ namespace tusdotnet.Stores
         public Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
         {
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".uploadlength");
-            return appendBlob.AppendTextAsync(uploadLength.ToString(), cancellationToken);
+            return appendBlob.AppendTextAsync(uploadLength.ToString());
         }
 
         #region ToImplement
