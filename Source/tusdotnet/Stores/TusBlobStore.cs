@@ -22,27 +22,22 @@ namespace tusdotnet.Stores
 		ITusStore,
 		ITusCreationStore,
 		ITusReadableStore,
-		ITusTerminationStore,
-		ITusChecksumStore,
-		ITusConcatenationStore,
-		ITusExpirationStore,
-		ITusCreationDeferLengthStore
+		ITusTerminationStore
+		//ITusChecksumStore,
+		//ITusConcatenationStore,
+		//ITusExpirationStore,
+		//ITusCreationDeferLengthStore
 	{
-		private readonly string _directoryPath;
 		private readonly Dictionary<string, long> _lengthBeforeWrite;
 		private readonly bool _deletePartialFilesOnConcat;
         private readonly CloudBlobContainer _cloudBlobContainer;
 
-		// Number of bytes to read at the time from the input stream.
-		// The lower the value, the less data needs to be re-submitted on errors.
-		// However, the lower the value, the slower the operation is. 51200 = 50 KB.
-		private const int ByteChunkSize = 5120000;
 
-		/// <summary>
-		/// Initializes a new instance of the <see cref="TusBlobStore"/> class.
-		/// Using this overload will not delete partial files if a final concatenation is performed.
-		/// </summary>
-		/// <param name="directoryPath">The path on disk where to save files</param>
+        /// <summary>
+        /// Initializes a new instance of the <see cref="TusBlobStore"/> class.
+        /// </summary>
+        /// <param name="connectionString">Azure blob connectionstring</param>
+        /// <param name="blobContainer">Container name</param>
 		public TusBlobStore(string connectionString, string blobContainer) : this(connectionString, blobContainer, false)
 		{
 			// Left blank.
@@ -111,40 +106,44 @@ namespace tusdotnet.Stores
             return Task.FromResult(appendBlob.Properties.Length);
         }
 
-		/// <inheritdoc />
-		public async Task<string> CreateFileAsync(long uploadLength, string metadata, CancellationToken cancellationToken)
-		{
-			var fileId = Guid.NewGuid().ToString("n");
-			var path = GetPath(fileId);
-			File.Create(path).Dispose();
-			if (uploadLength != -1)
-			{
-				await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
-			}
-			File.WriteAllText($"{path}.metadata", metadata);
-			return fileId;
-		}
+        /// <inheritdoc />
+        public async Task<string> CreateFileAsync(long uploadLength, string metadata, CancellationToken cancellationToken)
+        {
+            var fileId = Guid.NewGuid().ToString("n");
+            var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
+            appendBlob.CreateOrReplace();
+            
+            if (uploadLength != -1)
+            {
+                await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
+            }
+            var metadataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId+".metadata");
+            metadataBlob.AppendText(metadata);            
+            return fileId;
+        }
 
-		/// <inheritdoc />
-		public Task<string> GetUploadMetadataAsync(string fileId, CancellationToken cancellationToken)
-		{
-			var path = GetPath(fileId) + ".metadata";
+        /// <inheritdoc />
+        public Task<string> GetUploadMetadataAsync(string fileId, CancellationToken cancellationToken)
+        {
+            var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId+".metadata");
+            
+            if (!metaDataBlob.Exists())
+            {
+                return Task.FromResult<string>(null);
+            }
+            return metaDataBlob.DownloadTextAsync(cancellationToken);            
+        }
 
-			if (!File.Exists(path))
-			{
-				return Task.FromResult<string>(null);
-			}
-
-			var firstLine = ReadFirstLine(path);
-			return string.IsNullOrEmpty(firstLine) ? Task.FromResult<string>(null) : Task.FromResult(firstLine);
-		}
-
-		/// <inheritdoc />
-		public async Task<ITusFile> GetFileAsync(string fileId, CancellationToken cancellationToken)
+        /// <inheritdoc />
+        public async Task<ITusFile> GetFileAsync(string fileId, CancellationToken cancellationToken)
 		{
 			var metadata = await GetUploadMetadataAsync(fileId, cancellationToken);
-			var file = new TusDiskFile(_directoryPath, fileId, metadata);
-			return file.Exist() ? file : null;
+
+            var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
+            
+            var file = new TusAzureBlobFile(fileId, metadata, appendBlob);
+
+            return await file.Exists() ? file : null;
 		}
 
 		/// <inheritdoc />
@@ -152,58 +151,77 @@ namespace tusdotnet.Stores
 		{
 			return Task.Run(() =>
 			{
-				var path = GetPath(fileId);
-				File.Delete(path);
-				File.Delete($"{path}.uploadlength");
-				File.Delete($"{path}.metadata");
-				File.Delete($"{path}.uploadconcat");
-				File.Delete($"{path}.expiration");
+
+                var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
+                var metadataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".metadata");
+                var uploadlengthBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".uploadlength");
+                var expirationBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".expiration");
+
+
+                appendBlob.DeleteIfExistsAsync(cancellationToken);
+                metadataBlob.DeleteIfExistsAsync(cancellationToken);
+                uploadlengthBlob.DeleteIfExistsAsync(cancellationToken);
+                expirationBlob.DeleteIfExistsAsync(cancellationToken);               
+                
+				//File.Delete($"{path}.uploadconcat");
+				
 			}, cancellationToken);
 		}
 
+        /// <inheritdoc />
+        public Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
+        {
+            var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".uploadlength");
+            return appendBlob.AppendTextAsync(uploadLength.ToString(), cancellationToken);
+        }
+
+        #region ToImplement
+
+
+        /*
 		/// <inheritdoc />
 		public Task<IEnumerable<string>> GetSupportedAlgorithmsAsync(CancellationToken cancellationToken)
 		{
 			return Task.FromResult(new[] { "sha1" } as IEnumerable<string>);
 		}
 
-		/// <inheritdoc />
-		public Task<bool> VerifyChecksumAsync(string fileId, string algorithm, byte[] checksum, CancellationToken cancellationToken)
-		{
-			bool valid;
-			using (var stream = new FileStream(GetPath(fileId), FileMode.Open, FileAccess.ReadWrite))
-			{
-				valid = checksum.SequenceEqual(stream.CalculateSha1());
+        /// <inheritdoc />
+        public Task<bool> VerifyChecksumAsync(string fileId, string algorithm, byte[] checksum, CancellationToken cancellationToken)
+        {
+            bool valid;
+            using (var stream = new FileStream(GetPath(fileId), FileMode.Open, FileAccess.ReadWrite))
+            {
+                valid = checksum.SequenceEqual(stream.CalculateSha1());
 
-				// ReSharper disable once InvertIf
-				if (!valid && _lengthBeforeWrite.ContainsKey(fileId))
-				{
-					stream.Seek(0, SeekOrigin.Begin);
-					stream.SetLength(_lengthBeforeWrite[fileId]);
-					_lengthBeforeWrite.Remove(fileId);
-				}
-			}
+                // ReSharper disable once InvertIf
+                if (!valid && _lengthBeforeWrite.ContainsKey(fileId))
+                {
+                    stream.Seek(0, SeekOrigin.Begin);
+                    stream.SetLength(_lengthBeforeWrite[fileId]);
+                    _lengthBeforeWrite.Remove(fileId);
+                }
+            }
 
-			return Task.FromResult(valid);
-		}
+            return Task.FromResult(valid);
+        }
 
-		/// <inheritdoc />
+		// <inheritdoc />
 		public Task<FileConcat> GetUploadConcatAsync(string fileId, CancellationToken cancellationToken)
-		{
-			var uploadconcat = $"{GetPath(fileId)}.uploadconcat";
-			if (!File.Exists(uploadconcat))
-			{
-				return Task.FromResult<FileConcat>(null);
-			}
+        {
+            var uploadconcat = $"{GetPath(fileId)}.uploadconcat";
+            if (!File.Exists(uploadconcat))
+            {
+                return Task.FromResult<FileConcat>(null);
+            }
 
-			var firstLine = ReadFirstLine(uploadconcat);
-			return string.IsNullOrWhiteSpace(firstLine)
-				? Task.FromResult<FileConcat>(null)
-				: Task.FromResult(new UploadConcat(firstLine).Type);
-		}
+            var firstLine = ReadFirstLine(uploadconcat);
+            return string.IsNullOrWhiteSpace(firstLine)
+                ? Task.FromResult<FileConcat>(null)
+                : Task.FromResult(new UploadConcat(firstLine).Type);
+        }
 
-		/// <inheritdoc />
-		public async Task<string> CreatePartialFileAsync(long uploadLength, string metadata, CancellationToken cancellationToken)
+        /// <inheritdoc />
+        public async Task<string> CreatePartialFileAsync(long uploadLength, string metadata, CancellationToken cancellationToken)
 		{
 			var fileId = await CreateFileAsync(uploadLength, metadata, cancellationToken);
 			File.WriteAllText($"{GetPath(fileId)}.uploadconcat", new FileConcatPartial().GetHeader());
@@ -309,15 +327,7 @@ namespace tusdotnet.Stores
 			}
 		}
 
-		/// <inheritdoc />
-		public Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
-		{
-			return Task.Run(() =>
-			{
-				var path = GetPath(fileId);
-				File.WriteAllText($"{path}.uploadlength", uploadLength.ToString());
-			}, cancellationToken);
-		}
+
 
 		private string GetPath(string fileId)
 		{
@@ -345,5 +355,7 @@ namespace tusdotnet.Stores
 				}
 			}
 		}
-	}
+        */
+        #endregion
+    }
 }
