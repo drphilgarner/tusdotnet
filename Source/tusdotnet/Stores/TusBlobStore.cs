@@ -112,14 +112,21 @@ namespace tusdotnet.Stores
         {
             var fileId = Guid.NewGuid().ToString("n");
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
+
             await appendBlob.CreateOrReplaceAsync();
-            
+
             if (uploadLength != -1)
             {
                 await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
             }
-            var metadataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId+".metadata");
-            await metadataBlob.AppendTextAsync(metadata);            
+
+            var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".metadata");
+
+            await metaDataBlob.CreateOrReplaceAsync().ContinueWith(t => {
+                if (metadata != null)
+                    metaDataBlob.AppendTextAsync(metadata);
+               });
+            
             return fileId;
         }
 
@@ -173,7 +180,10 @@ namespace tusdotnet.Stores
         public Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
         {
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".uploadlength");
-            return appendBlob.AppendTextAsync(uploadLength.ToString());
+            return appendBlob.CreateOrReplaceAsync().ContinueWith(t =>
+            {
+                appendBlob.AppendTextAsync(uploadLength.ToString());
+            });            
         }
 
         #region ToImplement
