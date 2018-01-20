@@ -66,9 +66,9 @@ namespace tusdotnet.Stores
 		public async Task<long> AppendDataAsync(string fileId, Stream stream, CancellationToken cancellationToken)
 		{            
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
-            
+
             //todo sort cancellationToken
-            await appendBlob.AppendFromStreamAsync(stream);
+            await appendBlob.AppendFromStreamAsync(stream, null, null, null, cancellationToken);
 
             return stream.Length;             			
 		}
@@ -98,13 +98,13 @@ namespace tusdotnet.Stores
 				: Task.FromResult(new long?(long.Parse(firstLine.Result)));
 		}
 
-		/// <inheritdoc />
-		public Task<long> GetUploadOffsetAsync(string fileId, CancellationToken cancellationToken)
-		{
+        /// <inheritdoc />
+        public async Task<long> GetUploadOffsetAsync(string fileId, CancellationToken cancellationToken)
+        {
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
-            appendBlob.FetchAttributesAsync();
-
-            return Task.FromResult(appendBlob.Properties.Length);
+            await appendBlob.FetchAttributesAsync();
+            
+            return appendBlob.Properties.Length;
         }
 
         /// <inheritdoc />
