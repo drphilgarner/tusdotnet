@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -116,6 +116,122 @@ namespace tusdotnet.test.Tests
             {
                 fileOffset.ShouldBeInRange(1, 10240000);
             }            
+        }
+
+
+        [Fact]
+        public async Task AppendDataAsync_Throws_Exception_If_More_Data_Than_Upload_Length_Is_Provided()
+        {
+            // Test that it does not allow more than upload length to be written.
+
+            var fileId = await _fixture.Store.CreateFileAsync(100, null, CancellationToken.None);
+
+            var storeException = await Should.ThrowAsync<TusStoreException>(
+                async () => await _fixture.Store.AppendDataAsync(fileId, new MemoryStream(new byte[101]), CancellationToken.None));
+
+            storeException.Message.ShouldBe("Stream contains more data than the file's upload length. Stream data: 101, upload length: 100.");
+        }
+
+        [Fact]
+        public async Task AppendDataAsync_Returns_Zero_If_File_Is_Already_Complete()
+        {
+            var fileId = await _fixture.Store.CreateFileAsync(100, null, CancellationToken.None);
+            var length = await _fixture.Store.AppendDataAsync(fileId, new MemoryStream(new byte[100]), CancellationToken.None);
+            length.ShouldBe(100);
+
+            length = await _fixture.Store.AppendDataAsync(fileId, new MemoryStream(new byte[1]), CancellationToken.None);
+            length.ShouldBe(0);
+        }
+
+
+        [Fact]
+        public async Task GetFileAsync_Returns_File_If_The_File_Exist()
+        {
+            var fileId = await _fixture.Store.CreateFileAsync(100, null, CancellationToken.None);
+
+            var content = Enumerable.Range(0, 100).Select(f => (byte)f).ToArray();
+
+            await _fixture.Store.AppendDataAsync(fileId, new MemoryStream(content), CancellationToken.None);
+
+            var file = await _fixture.Store.GetFileAsync(fileId, CancellationToken.None);
+
+            file.Id.ShouldBe(fileId);
+
+            using (var fileContent = await file.GetContentAsync(CancellationToken.None))
+            {
+                fileContent.Length.ShouldBe(content.Length);
+
+                var fileContentBuffer = new byte[fileContent.Length];
+                fileContent.Read(fileContentBuffer, 0, fileContentBuffer.Length);
+
+                for (var i = 0; i < content.Length; i++)
+                {
+                    fileContentBuffer[i].ShouldBe(content[i]);
+                }
+            }
+        }
+
+
+
+        [Fact]
+        public async Task GetFileAsync_Returns_Null_If_The_File_Does_Not_Exist()
+        {
+            var file = await _fixture.Store.GetFileAsync(Guid.NewGuid().ToString(), CancellationToken.None);
+            file.ShouldBeNull();
+        }
+
+        [Fact]
+        public async Task CreateFileAsync_Creates_Metadata_Properly()
+        {
+            var fileId = await _fixture.Store.CreateFileAsync(1, "key wrbDgMSaxafMsw==", CancellationToken.None);
+            fileId.ShouldNotBeNull();
+
+            var file = await _fixture.Store.GetFileAsync(fileId, CancellationToken.None);
+
+            var metadata = await file.GetMetadataAsync(CancellationToken.None);
+            metadata.ContainsKey("key").ShouldBeTrue();
+            // Correct encoding
+            metadata["key"].GetString(new UTF8Encoding()).ShouldBe("¶ÀĚŧ̳");
+            // Wrong encoding just to test that the result is different.
+            metadata["key"].GetString(new UTF7Encoding()).ShouldBe("Â¶ÃÄÅ§Ì³");
+            metadata["key"].GetBytes().ShouldBe(new byte[] { 194, 182, 195, 128, 196, 154, 197, 167, 204, 179 });
+        }
+
+        [Fact]
+        public async Task GetUploadMetadataAsync()
+        {
+            const string metadataConst = "key wrbDgMSaxafMsw==";
+            var fileId = await _fixture.Store.CreateFileAsync(1, metadataConst, CancellationToken.None);
+
+            var metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
+            metadata.ShouldBe(metadataConst);
+
+            fileId = await _fixture.Store.CreateFileAsync(1, null, CancellationToken.None);
+            metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
+            metadata.ShouldBeNull();
+
+            fileId = await _fixture.Store.CreateFileAsync(1, "", CancellationToken.None);
+            metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
+            metadata.ShouldBeNull();
+        }
+
+        [Fact]
+        public async Task DeleteFileAsync()
+        {
+            const string metadataConst = "key wrbDgMSaxafMsw==";
+            for (var i = 0; i < 10; i++)
+            {
+                var fileId = await _fixture.Store.CreateFileAsync(i + 1, i % 2 == 0 ? null : metadataConst, CancellationToken.None);
+                var exist = await _fixture.Store.FileExistAsync(fileId, CancellationToken.None);
+                exist.ShouldBeTrue();
+
+                await _fixture.Store.DeleteFileAsync(fileId, CancellationToken.None).ContinueWith(async t =>
+                {
+                   var exists = await _fixture.Store.FileExistAsync(fileId, CancellationToken.None);
+                   exists.ShouldBeFalse();
+                });
+                
+            }
         }
 
 

@@ -66,8 +66,17 @@ namespace tusdotnet.Stores
 		public async Task<long> AppendDataAsync(string fileId, Stream stream, CancellationToken cancellationToken)
 		{            
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
+            
+            var uploadLength = await GetUploadLengthAsync(fileId, cancellationToken);
 
-            //todo sort cancellationToken
+            await appendBlob.FetchAttributesAsync();
+
+            if (appendBlob.Properties.Length == uploadLength)
+            {
+                return 0;
+            }
+
+
             await appendBlob.AppendFromStreamAsync(stream, null, null, null, cancellationToken);
 
             return stream.Length;             			
@@ -121,12 +130,14 @@ namespace tusdotnet.Stores
             }
 
             var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".metadata");
-
-            await metaDataBlob.CreateOrReplaceAsync().ContinueWith(t => {
-                if (metadata != null)
-                    metaDataBlob.AppendTextAsync(metadata);
-               });
-            
+                
+            new Task(() => {
+                metaDataBlob.CreateOrReplaceAsync().ContinueWith(t => {
+                    if (metadata != null)
+                        metaDataBlob.AppendTextAsync(metadata);
+                });
+            }).RunSynchronously();
+           
             return fileId;
         }
 
