@@ -188,6 +188,10 @@ namespace tusdotnet.test.Tests
 
             var file = await _fixture.Store.GetFileAsync(fileId, CancellationToken.None);
 
+            //small delay, make sure it all gets written
+            Thread.Sleep(1000);
+
+
             var metadata = await file.GetMetadataAsync(CancellationToken.None);
             metadata.ContainsKey("key").ShouldBeTrue();
             // Correct encoding
@@ -202,6 +206,7 @@ namespace tusdotnet.test.Tests
         {
             const string metadataConst = "key wrbDgMSaxafMsw==";
             var fileId = await _fixture.Store.CreateFileAsync(1, metadataConst, CancellationToken.None);
+
 
             var metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
             metadata.ShouldBe(metadataConst);
