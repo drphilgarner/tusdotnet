@@ -51,7 +51,8 @@ namespace tusdotnet.Stores
         /// <inheritdoc />
         public Task<Dictionary<string, Metadata>> GetMetadataAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult(Metadata.Parse(_metadata));
+            var meta = Metadata.Parse(_metadata);
+            return Task.FromResult(meta);
         }
 
     }
