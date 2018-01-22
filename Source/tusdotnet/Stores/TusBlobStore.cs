@@ -33,6 +33,11 @@ namespace tusdotnet.Stores
         private readonly CloudBlobContainer _cloudBlobContainer;
 
 
+        // Number of bytes to read at the time from the input stream.
+        // The lower the value, the less data needs to be re-submitted on errors.
+        // However, the lower the value, the slower the operation is. 51200 = 50 KB.
+        private const int ByteChunkSize = 5120000;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="TusBlobStore"/> class.
         /// </summary>
@@ -68,18 +73,41 @@ namespace tusdotnet.Stores
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
             
             var uploadLength = await GetUploadLengthAsync(fileId, cancellationToken);
-
+            
             await appendBlob.FetchAttributesAsync();
 
-            if (appendBlob.Properties.Length == uploadLength)
+            long bytesWritten = 0;
+            long fileLength = appendBlob.Properties.Length;
+            if (fileLength == uploadLength)
             {
                 return 0;
             }
 
+            var bytesRead = 0;
+            do
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
 
-            await appendBlob.AppendFromStreamAsync(stream, null, null, null, cancellationToken);
+                var buffer = new byte[ByteChunkSize];
 
-            return stream.Length;             			
+                bytesRead = await stream.ReadAsync(buffer, 0, ByteChunkSize, cancellationToken);
+                fileLength += bytesRead;
+
+                if (fileLength > uploadLength)
+                {
+                    throw new TusStoreException(
+                            $"Stream contains more data than the file's upload length. Stream data: {fileLength}, upload length: {uploadLength}.");
+                }
+
+                await appendBlob.AppendFromByteArrayAsync(buffer, 0, bytesRead);
+                bytesWritten += bytesRead;
+
+            } while (bytesRead !=0);
+
+            //await appendBlob.AppendFromStreamAsync(stream, null, null, null, cancellationToken);
+
+            return bytesRead;             			
 		}
 
 		/// <inheritdoc />
@@ -99,12 +127,12 @@ namespace tusdotnet.Stores
 				return Task.FromResult<long?>(null);
 			}
 
-            var firstLine = uploadLengthBlob.DownloadTextAsync();
+            var firstLine = uploadLengthBlob.DownloadTextAsync().Result;
                        
 
-			return firstLine == null
+			return String.IsNullOrEmpty(firstLine)
 				? Task.FromResult<long?>(null)
-				: Task.FromResult(new long?(long.Parse(firstLine.Result)));
+				: Task.FromResult(new long?(long.Parse(firstLine)));
 		}
 
         /// <inheritdoc />
@@ -123,13 +151,12 @@ namespace tusdotnet.Stores
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId);
 
             await appendBlob.CreateOrReplaceAsync();
-
-            if (uploadLength != -1)
-            {
-                await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
-            }
+            
+            await SetUploadLengthAsync(fileId, uploadLength, cancellationToken);
 
             var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".metadata");
+
+            
                 
             new Task(() => {
                 metaDataBlob.CreateOrReplaceAsync().ContinueWith(t => {
@@ -188,13 +215,18 @@ namespace tusdotnet.Stores
 		}
 
         /// <inheritdoc />
-        public Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
+        public async Task SetUploadLengthAsync(string fileId, long uploadLength, CancellationToken cancellationToken)
         {
             var appendBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".uploadlength");
-            return appendBlob.CreateOrReplaceAsync().ContinueWith(t =>
-            {
-                appendBlob.AppendTextAsync(uploadLength.ToString());
-            });            
+
+            await appendBlob.CreateOrReplaceAsync();
+
+            await appendBlob.AppendTextAsync(uploadLength.ToString());
+
+            //return appendBlob.CreateOrReplaceAsync().ContinueWith(t =>
+            //{
+            //    appendBlob.AppendTextAsync(uploadLength.ToString());
+            //});            
         }
 
         #region ToImplement
