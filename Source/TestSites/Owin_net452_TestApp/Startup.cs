@@ -22,7 +22,7 @@ namespace OwinTestApp
     public class Startup
     {
         private readonly AbsoluteExpiration _absoluteExpiration = new AbsoluteExpiration(TimeSpan.FromMinutes(5));
-        private readonly TusDiskStore _tusDiskStore = new TusDiskStore(@"C:\tusfiles\");
+        private readonly TusDiskStore _tusDiskStore = new TusDiskStore(@"F:\tusfiles\");
 
         public void Configuration(IAppBuilder app)
         {
