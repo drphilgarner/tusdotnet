@@ -26,6 +26,8 @@ namespace OwinTestApp
 
         public void Configuration(IAppBuilder app)
         {
+            app.UseCors(CorsOptions.AllowAll);
+            
             var corsPolicy = new System.Web.Cors.CorsPolicy
             {
                 AllowAnyHeader = true,
@@ -33,21 +35,29 @@ namespace OwinTestApp
                 AllowAnyOrigin = true
             };
 
+                        
+            
+            
             // ReSharper disable once PossibleNullReferenceException - nameof will cause compiler error if the property does not exist.
             corsPolicy.GetType()
                 .GetProperty(nameof(corsPolicy.ExposedHeaders))
                 .SetValue(corsPolicy, CorsHelper.GetExposedHeaders());
 
-            app.UseCors(new CorsOptions
-            {
-                PolicyProvider = new CorsPolicyProvider
-                {
-                    PolicyResolver = context => Task.FromResult(corsPolicy)
-                }
-            });
+
+            //app.UseCors(new CorsOptions
+            //{
+            //    PolicyProvider = new CorsPolicyProvider
+            //    {
+            //        PolicyResolver = context => Task.FromResult(corsPolicy)
+            //    },
+
+            //});
+
 
             app.Use(async (context, next) =>
             {
+
+                //context.Response.Headers.Add("Access-Control-Allow-Origin", new[] { "*" });
                 try
                 {
                     await next.Invoke();
@@ -170,6 +180,7 @@ namespace OwinTestApp
                 {
                     case "/":
                         context.Response.ContentType = "text/html";
+                        context.Response.Headers.Add("Access-Control-Allow-Origin", new[] { "*" });
                         await context.Response.WriteAsync(File.ReadAllText("../../index.html"),
                             context.Request.CallCancelled);
                         break;
