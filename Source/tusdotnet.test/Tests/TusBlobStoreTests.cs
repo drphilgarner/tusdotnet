@@ -186,12 +186,8 @@ namespace tusdotnet.test.Tests
             var fileId = await _fixture.Store.CreateFileAsync(1, "key wrbDgMSaxafMsw==", CancellationToken.None);
             fileId.ShouldNotBeNull();
 
-            var file = await _fixture.Store.GetFileAsync(fileId, CancellationToken.None);
-
-            //small delay, make sure it all gets written
-            Thread.Sleep(1000);
-
-
+            var file = _fixture.Store.GetFileAsync(fileId, CancellationToken.None).Result;
+                        
             var metadata = await file.GetMetadataAsync(CancellationToken.None);
             metadata.ContainsKey("key").ShouldBeTrue();
             // Correct encoding
@@ -213,11 +209,11 @@ namespace tusdotnet.test.Tests
 
             fileId = await _fixture.Store.CreateFileAsync(1, null, CancellationToken.None);
             metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
-            metadata.ShouldBeNull();
+            metadata.ShouldBeNullOrEmpty();
 
             fileId = await _fixture.Store.CreateFileAsync(1, "", CancellationToken.None);
             metadata = await _fixture.Store.GetUploadMetadataAsync(fileId, CancellationToken.None);
-            metadata.ShouldBeNull();
+            metadata.ShouldBeNullOrEmpty();
         }
 
         [Fact]

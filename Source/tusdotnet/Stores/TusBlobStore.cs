@@ -107,7 +107,7 @@ namespace tusdotnet.Stores
 
             //await appendBlob.AppendFromStreamAsync(stream, null, null, null, cancellationToken);
 
-            return bytesRead;             			
+            return bytesWritten;             			
 		}
 
 		/// <inheritdoc />
@@ -156,15 +156,12 @@ namespace tusdotnet.Stores
 
             var metaDataBlob = _cloudBlobContainer.GetAppendBlobReference(fileId + ".metadata");
 
-            
-                
-            new Task(() => {
-                metaDataBlob.CreateOrReplaceAsync().ContinueWith(t => {
-                    if (metadata != null)
-                        metaDataBlob.AppendTextAsync(metadata);
-                });
-            }).RunSynchronously();
-           
+            await metaDataBlob.CreateOrReplaceAsync().ContinueWith(_ =>
+             {
+                 if (metadata != null)
+                     metaDataBlob.AppendTextAsync(metadata);
+             });
+          
             return fileId;
         }
 

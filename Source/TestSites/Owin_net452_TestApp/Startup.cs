@@ -22,7 +22,9 @@ namespace OwinTestApp
     public class Startup
     {
         private readonly AbsoluteExpiration _absoluteExpiration = new AbsoluteExpiration(TimeSpan.FromMinutes(5));
-        private readonly TusDiskStore _tusDiskStore = new TusDiskStore(@"F:\tusfiles\");
+        //private readonly TusDiskStore _tusDiskStore = new TusDiskStore(@"F:\tusfiles\");
+        private readonly TusBlobStore _tusDiskStore = new TusBlobStore("DefaultEndpointsProtocol=https;AccountName=foliownstore;AccountKey=j4kisxBc/VWV3jkaliUx1jpBXS+gGdmbDRIydeQA3gzgn4bzWmJoz/uE8cwEORc4fW7hAQ+wvAjv9VUSw9C/nw==;EndpointSuffix=core.windows.net", "tustests");
+
 
         public void Configuration(IAppBuilder app)
         {
@@ -56,7 +58,7 @@ namespace OwinTestApp
             app.Use(async (context, next) =>
             {
 
-                //context.Response.Headers.Add("Access-Control-Allow-Origin", new[] { "*" });
+                
                 try
                 {
                     await next.Invoke();
@@ -86,15 +88,15 @@ namespace OwinTestApp
                                 return Task.FromResult(true);
                             }
 
-                            if (!ctx.Metadata.ContainsKey("name"))
+                            if (!ctx.Metadata.ContainsKey("filename"))
                             {
                                 ctx.FailRequest("name metadata must be specified. ");
                             }
 
-                            if (!ctx.Metadata.ContainsKey("contentType"))
-                            {
-                                ctx.FailRequest("contentType metadata must be specified. ");
-                            }
+                            //if (!ctx.Metadata.ContainsKey("contentType"))
+                            //{
+                            //    ctx.FailRequest("contentType metadata must be specified. ");
+                            //}
 
                             return Task.FromResult(true);
                         },
@@ -197,17 +199,19 @@ namespace OwinTestApp
             // Setup cleanup job to remove incomplete expired files.
             // This is just a simple example. In production one would use a cronjob/webjob and poll an endpoint that runs RemoveExpiredFilesAsync.
             var onAppDisposingToken = new OwinContext(app.Properties).Get<CancellationToken>("host.OnAppDisposing");
-            Task.Run(async () =>
-            {
-                while (!onAppDisposingToken.IsCancellationRequested)
-                {
-                    Console.WriteLine("Running cleanup job...");
-                    var numberOfRemovedFiles = await _tusDiskStore.RemoveExpiredFilesAsync(onAppDisposingToken);
-                    Console.WriteLine(
-                        $"Removed {numberOfRemovedFiles} expired files. Scheduled to run again in {_absoluteExpiration.Timeout.TotalMilliseconds} ms");
-                    await Task.Delay(_absoluteExpiration.Timeout, onAppDisposingToken);
-                }
-            }, onAppDisposingToken);
+
+            //TODO add support for RemoveExpiredFilesAsync
+            //Task.Run(async () =>
+            //{
+            //    while (!onAppDisposingToken.IsCancellationRequested)
+            //    {
+            //        Console.WriteLine("Running cleanup job...");
+            //        var numberOfRemovedFiles = await _tusDiskStore.RemoveExpiredFilesAsync(onAppDisposingToken);
+            //        Console.WriteLine(
+            //            $"Removed {numberOfRemovedFiles} expired files. Scheduled to run again in {_absoluteExpiration.Timeout.TotalMilliseconds} ms");
+            //        await Task.Delay(_absoluteExpiration.Timeout, onAppDisposingToken);
+            //    }
+            //}, onAppDisposingToken);
         }
     }
 }
