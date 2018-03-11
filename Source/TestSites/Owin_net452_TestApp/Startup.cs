@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Configuration;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -22,15 +23,21 @@ namespace OwinTestApp
     public class Startup
     {
         private readonly AbsoluteExpiration _absoluteExpiration = new AbsoluteExpiration(TimeSpan.FromMinutes(5));
-        //private readonly TusDiskStore _tusDiskStore = new TusDiskStore(@"F:\tusfiles\");
-        private readonly TusBlobStore _tusDiskStore = new TusBlobStore("DefaultEndpointsProtocol=https;AccountName=foliownstore;AccountKey=j4kisxBc/VWV3jkaliUx1jpBXS+gGdmbDRIydeQA3gzgn4bzWmJoz/uE8cwEORc4fW7hAQ+wvAjv9VUSw9C/nw==;EndpointSuffix=core.windows.net", "tustests");
+        
+        private readonly TusBlobStore _tusDiskStore;
 
+        public Startup()
+        {
+            var connString = ConfigurationManager.AppSettings["AzureBlobConnectionString"];
+            var blobStore = ConfigurationManager.AppSettings["AzureBlobContainer"];
+
+            _tusDiskStore = new TusBlobStore(connString, blobStore);
+        }
 
         public void Configuration(IAppBuilder app)
         {
-            //app.UseCors(CorsOptions.AllowAll);
             
-            var corsPolicy = new System.Web.Cors.CorsPolicy
+var corsPolicy = new System.Web.Cors.CorsPolicy
             {
                 AllowAnyHeader = true,
                 AllowAnyMethod = true,
