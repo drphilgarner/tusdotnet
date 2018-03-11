@@ -161,7 +161,7 @@ namespace tusdotnet.Stores
                  if (metadata != null)
                      metaDataBlob.AppendTextAsync(metadata);
              });
-          
+           
             return fileId;
         }
 
